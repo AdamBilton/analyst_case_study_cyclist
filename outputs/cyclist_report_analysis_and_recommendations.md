@@ -246,10 +246,10 @@ ggplot(combined_rides_month_pivotted, aes(x = month, y = rides/1000, fill = memb
 - This is in conjunction with an increase in total rides from Jan - Aug
   and decrease in rides from Aug - Jan
 
-### Is temperature a potential explanatory factor for increased casual use over the months?
+### Is temperature a potential explanatory factor for increased casual use over summer months?
 
 ``` r
-# correlation of temperature and proportion og casual riders
+# correlation of temperature and proportion of casual riders
 cor(combined_rides_month$Temp, combined_rides_month$casual_proportion)
 ```
 
@@ -548,7 +548,7 @@ ggplot(combined_rides_holidays_pivotted, aes(x = holidays, y = rides, fill = mem
 
 <figure>
 <img
-src="D:/Program%20Files/Documents/3.%20Data/Projects/26.05.24_case_study_cyclist/other/journey_start_heatmap.png"
+src="other/journey_start_heatmap.png"
 alt="starting locations heat map" />
 <figcaption aria-hidden="true">starting locations heat map</figcaption>
 </figure>
@@ -560,7 +560,7 @@ alt="starting locations heat map" />
 
 <figure>
 <img
-src="D:/Program%20Files/Documents/3.%20Data/Projects/26.05.24_case_study_cyclist/other/journey_end_heatmap.png"
+src="other/journey_end_heatmap.png"
 alt="Ending locations heat map" />
 <figcaption aria-hidden="true">Ending locations heat map</figcaption>
 </figure>
