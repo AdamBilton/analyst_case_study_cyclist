@@ -52,16 +52,16 @@ This folder contains the R script for the project
 
 The following packages must be installed in R to run the script and/or RMarkdown files:
 
-install.packages("tidyverse")
-install.packages("plotly")
-install.packages("readxl")
-install.packages("data.table")
-install.packages("lubridate")
-install.packages("tibble")
-install.packages("skimr")
-install.packages("here")
-install.packages("janitor")
-install.packages("car")
+install.packages("tidyverse")  
+install.packages("plotly")  
+install.packages("readxl")  
+install.packages("data.table")  
+install.packages("lubridate")  
+install.packages("tibble")  
+install.packages("skimr")  
+install.packages("here")  
+install.packages("janitor")  
+install.packages("car")  
 
 # Usage
 
