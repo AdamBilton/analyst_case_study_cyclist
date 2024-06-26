@@ -65,17 +65,13 @@ install.packages("car")
 
 # Usage
 
+Open and view the markdown files from the 'outputs' folder
+
+Alternatively:
+
+You can download the data from the sources identified and run the code chunks manually
+
 1. Open "cyclist_report_cleaning_and_preperation" from the rmarkdown folder
 2. Check cleaning process visually or run code chunks sequentially to carry out data cleaning and preparation
 3. Open "cyclist_report_analysis_and_recommendations" from the rmarkdown folder
 4. Run code chunks sequentially to analyse data and produce visualisations
-
-Alternatively:
-
-Open the .pdf files from the 'outputs' folder
-OR
-View the rendered github outputs for each document
-OR
-Knit the RMarkdown documents to a file type of your preference after running the code chunks
-
-
