@@ -548,7 +548,7 @@ ggplot(combined_rides_holidays_pivotted, aes(x = holidays, y = rides, fill = mem
 
 <figure>
 <img
-src="other/journey_start_heatmap.png"
+src="images/journey_start_heatmap.png"
 alt="starting locations heat map" />
 <figcaption aria-hidden="true">starting locations heat map</figcaption>
 </figure>
@@ -560,7 +560,7 @@ alt="starting locations heat map" />
 
 <figure>
 <img
-src="other/journey_end_heatmap.png"
+src="images/journey_end_heatmap.png"
 alt="Ending locations heat map" />
 <figcaption aria-hidden="true">Ending locations heat map</figcaption>
 </figure>
