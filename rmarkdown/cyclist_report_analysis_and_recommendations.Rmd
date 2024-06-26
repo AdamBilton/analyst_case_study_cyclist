@@ -1,0 +1,697 @@
+---
+title: "cyclist_cleaning_and_preparation"
+author: "Adam"
+date: "`r Sys.Date()`"
+output:
+  github_document: default
+  html_document:
+    self_contained: true
+---
+
+# Contents
+
+- Packages
+- Data
+- Analysis
+- Discussion
+
+# Packages
+
+```{r echo = T, results = 'hide', message = FALSE}
+library(tidyverse)
+library(plotly)
+library(readxl)
+library(data.table)
+library(lubridate)
+library(tibble)
+library(skimr)
+library(here)
+library(janitor)
+library(car)
+```
+
+# Data
+
+```{r}
+# uploading cleaned data
+
+cyclist_data_cleaned <- read.csv(here("data", "cyclist_data_cleaned.csv"))
+
+chicago_temperatures <- read.csv(here("data", "chicago_weather_monthly_averages.csv"))
+
+# Converting variables to factors
+
+cyclist_data_cleaned$member_casual <- as.factor(cyclist_data_cleaned$member_casual)
+cyclist_data_cleaned$rideable_type <- as.factor(cyclist_data_cleaned$rideable_type)
+cyclist_data_cleaned$day_of_week <- as.factor(cyclist_data_cleaned$day_of_week)
+cyclist_data_cleaned$weekday_weekend <- as.factor(cyclist_data_cleaned$weekday_weekend)
+cyclist_data_cleaned$month <- as.factor(cyclist_data_cleaned$month)
+cyclist_data_cleaned$time_of_day <- as.factor(cyclist_data_cleaned$time_of_day)
+cyclist_data_cleaned$holidays <- as.factor(cyclist_data_cleaned$holidays)
+cyclist_data_cleaned$journey_grouping <- as.factor(cyclist_data_cleaned$journey_grouping)
+```
+```{r}
+str(cyclist_data_cleaned)
+```
+```{r}
+skim_without_charts(cyclist_data_cleaned)
+
+```
+  
+# Analysis
+  
+## Logistic regression to test which variables significantly impact member/casual rates
+  
+```{r, model}
+# Final model
+
+# weekday vs weekend was removed as it was derived from day of the week and caused collinearity
+# holidays vs term time was removed as it was the only non-significant factor and helped reduce model complexity and memory use
+
+cyclistic_logistic_regression_model <- glm(member_casual ~ rideable_type + journey_time + day_of_week + month +
+                                             time_of_day + journey_grouping,
+                                           data = cyclist_data_cleaned, family = binomial)
+
+summary(cyclistic_logistic_regression_model)
+```
+
+- Exploration of results from the model above impacting member/casual likelihood are explored below
+  
+### Months of the year significantly impacted odds of being a member
+  
+```{r include=FALSE}
+# prep for plot
+
+total_rides_per_month <- cyclist_data_cleaned %>%
+  group_by(month) %>%
+  summarise(total_rides = n())
+
+member_rides_per_month <- cyclist_data_cleaned %>%
+  filter(member_casual == "member") %>%
+  group_by(month) %>%
+  summarise(member_rides = n())
+
+casual_rides_per_month <- cyclist_data_cleaned %>%
+  filter(member_casual == "casual") %>%
+  group_by(month) %>%
+  summarise(casual_rides = n())
+
+combined_rides_month <- total_rides_per_month %>%
+  left_join(member_rides_per_month, by = "month") %>%
+  left_join(casual_rides_per_month, by = "month") %>%
+  mutate(
+    total_calculated = member_rides + casual_rides,
+    member_proportion = member_rides / total_rides * 100,
+    casual_proportion = casual_rides / total_rides * 100,
+    proportion = 100
+  )
+
+combined_rides_month$total_rides == combined_rides_month$total_calculated
+# [1] TRUE TRUE TRUE TRUE TRUE TRUE TRUE TRUE TRUE TRUE TRUE TRUE
+
+month_levels <- c("May", "June", "July", "August", "September", "October", "November", 
+                  "December", "January", "February", "March", "April")
+
+combined_rides_month$month <- factor(combined_rides_month$month, levels = month_levels)
+```
+```{r}
+# plot: user proportions by month
+
+ggplot(combined_rides_month, aes(x = month)) +
+  geom_col(aes(y = proportion, fill = "Casual"), position = "stack") +
+  geom_col(aes(y = member_proportion, fill = "Member"), position = "stack") +
+  labs(title = "User proportions from May 2023 to April 2024",
+       x = NULL,
+       y = "User Proportions",
+       fill = "") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.6))+
+  scale_fill_manual(values = c("Member" = "#023047", "Casual" = "#ffb703"))+
+  annotate(geom = "text", x = 1, y = 92, label = "38%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 2, y = 92, label = "41%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 3, y = 92, label = "43%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 4, y = 92, label = "40%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 5, y = 92, label = "39%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 6, y = 92, label = "33%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 7, y = 92, label = "27%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 8, y = 92, label = "23%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 9, y = 92, label = "17%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 10, y = 92, label = "21%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 11, y = 92, label = "27%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 12, y = 92, label = "31%", size = 4, angle = 45)
+```
+
+- We see here that there is a steady trend for increasing proportion of casual rides from Jan - July  
+- This is followed by a steady decline in proportion of casual use form July - Jan  
+  
+```{r include=FALSE}
+# prep for plot
+
+combined_rides_month_pivotted <- combined_rides_month %>%
+  select(month, member_rides, casual_rides) %>%
+  pivot_longer(cols = c(member_rides, casual_rides), 
+               names_to = "membership_type", 
+               values_to = "rides")
+
+combined_rides_month_pivotted$membership_type <- as.factor(combined_rides_month_pivotted$membership_type)
+
+month_levels <- c("May", "June", "July", "August", "September", "October", "November", 
+                  "December", "January", "February", "March", "April")
+
+combined_rides_month_pivotted$month <- factor(combined_rides_month_pivotted$month, levels = month_levels)
+```
+```{r}
+# plot: ride count per month
+
+ggplot(combined_rides_month_pivotted, aes(x = month, y = rides/1000, fill = membership_type))+
+  geom_col(position = "dodge", width = 0.7)+
+  scale_fill_manual(values = c("member_rides" = "#023047", "casual_rides" = "#ffb703"))+
+  labs(title = "Ride count of users by month: May 2023 to April 2024",
+       x = NULL,
+       y = "Number of rides (in thousands)",
+       fill = "") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.6))
+```
+
+- This is in conjunction with an increase in total rides from Jan - Aug and decrease in rides from Aug - Jan  
+  
+### Is temperature a potential explanatory factor for increased casual use over the months?  
+  
+```{r include=FALSE}
+# prep for plot
+
+combined_rides_month <- merge(combined_rides_month, chicago_temperatures, by.x = "month", by.y = "Average", all.x = TRUE)
+```
+```{r}
+# correlation of temperature and proportion og casual riders
+cor(combined_rides_month$Temp, combined_rides_month$casual_proportion)
+```
+- a very strong positive correlation between temperature and proportion of casual users  
+```{r}
+# regression for relationship between temperature and proportion of casual riders
+test_model <- lm(casual_proportion ~ Temp, data = combined_rides_month)
+summary(test_model)
+```
+```{r, warning=FALSE}
+ # plot: temperature against proportion of casual riders
+ggplot(data = combined_rides_month, aes(x = Temp, y = casual_proportion))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  labs(title = "Relationship between monthly average temperature and proportion of casual users",
+       x = "Temperature (°C)",
+       y = "Proportion of casual riders (%)")+
+  theme_minimal()+
+  annotate(geom = "text", x = 18, y = 35, label = expression(paste("R"^2, " = 0.9555")), size = 4, angle = 29)
+```
+
+This regression model and plot suggest a strong and significant relationship (p = 2.717e-08) between temperature and casual user proportion with the model explaining 96% of the observed variance in the data. For each degree increase in temperature (C) the proportion of casual use increases by roughly 0.9%  
+  
+### Day of the week significantly impacted odds of being a member  
+  
+```{r include=FALSE}
+# prep for plot
+
+total_rides_per_day_of_week <- cyclist_data_cleaned %>%
+  group_by(day_of_week) %>%
+  summarise(total_rides = n())
+
+member_rides_per_day_of_week <- cyclist_data_cleaned %>%
+  filter(member_casual == "member") %>%
+  group_by(day_of_week) %>%
+  summarise(member_rides = n())
+
+casual_rides_per_day_of_week <- cyclist_data_cleaned %>%
+  filter(member_casual == "casual") %>%
+  group_by(day_of_week) %>%
+  summarise(casual_rides = n())
+
+combined_rides_day_of_week <- total_rides_per_day_of_week %>%
+  left_join(member_rides_per_day_of_week, by = "day_of_week") %>%
+  left_join(casual_rides_per_day_of_week, by = "day_of_week") %>%
+  mutate(
+    total_calculated = member_rides + casual_rides,
+    member_proportion = member_rides / total_rides * 100,
+    casual_proportion = casual_rides / total_rides * 100,
+    proportion = 100
+  )
+
+day_levels <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+combined_rides_day_of_week$day_of_week <- factor(combined_rides_day_of_week$day_of_week, levels = day_levels)
+```
+```{r}
+# plot: user proportion by day of the week
+
+ggplot(combined_rides_day_of_week, aes(x = day_of_week)) +
+  geom_col(aes(y = proportion, fill = "Casual"), position = "stack") +
+  geom_col(aes(y = member_proportion, fill = "Member"), position = "stack") +
+  labs(title = "User proportions by day of the week: May 2023 to April 2024",
+       x = NULL,
+       y = "User Proportions",
+       fill = "") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.6))+
+  scale_fill_manual(values = c("Member" = "#023047", "Casual" = "#ffb703"))+
+  annotate(geom = "text", x = 1, y = 92, label = "32%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 2, y = 92, label = "29%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 3, y = 92, label = "29%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 4, y = 92, label = "30%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 5, y = 92, label = "36%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 6, y = 92, label = "46%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 7, y = 92, label = "45%", size = 4, angle = 45)
+```
+
+- Casual riders make up a larger proportion of riders on the weekend  
+- Slightly more casual riders on Fridays and Monday, could be a result of bank holiday weekends which were not assessed  
+- These results were also visible in the weekday/weekend split which was removed from the logistic regression model  
+  
+```{r include=FALSE}
+# prep for plot
+
+combined_rides_day_pivotted <- combined_rides_day_of_week %>%
+  select(day_of_week, member_rides, casual_rides) %>%
+  pivot_longer(cols = c(member_rides, casual_rides), 
+               names_to = "membership_type", 
+               values_to = "rides")
+
+combined_rides_day_pivotted$membership_type <- as.factor(combined_rides_day_pivotted$membership_type)
+
+day_levels <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+combined_rides_day_pivotted$day_of_week <- factor(combined_rides_day_pivotted$day_of_week, levels = day_levels)
+```
+```{r}
+# plot: rides per day for days of the week
+
+ggplot(combined_rides_day_pivotted, aes(x = day_of_week, y = rides/1000, fill = membership_type))+
+  geom_col(position = "dodge", width = 0.7)+
+  scale_fill_manual(values = c("member_rides" = "#023047", "casual_rides" = "#ffb703"))+
+  labs(title = "Ride count of users by day of week: May 2023 to April 2024",
+       x = NULL,
+       y = "Number of rides (in thousands)",
+       fill = "") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.6))
+```
+
+- The difference in casual use proportion at the weekend comes as a result of both casual use increase and member use decrease  
+  
+### Time of day significantly impacted odds of being a member  
+  
+```{r include=FALSE}
+# prep for plot
+
+total_rides_per_time_of_day <- cyclist_data_cleaned %>%
+  group_by(time_of_day) %>%
+  summarise(total_rides = n())
+
+member_rides_per_time_of_day <- cyclist_data_cleaned %>%
+  filter(member_casual == "member") %>%
+  group_by(time_of_day) %>%
+  summarise(member_rides = n())
+
+casual_rides_per_time_of_day <- cyclist_data_cleaned %>%
+  filter(member_casual == "casual") %>%
+  group_by(time_of_day) %>%
+  summarise(casual_rides = n())
+
+combined_rides_per_time_of_day <- total_rides_per_time_of_day %>%
+  left_join(member_rides_per_time_of_day, by = "time_of_day") %>%
+  left_join(casual_rides_per_time_of_day, by = "time_of_day") %>%
+  mutate(
+    total_calculated = member_rides + casual_rides,
+    member_proportion = member_rides / total_rides * 100,
+    casual_proportion = casual_rides / total_rides * 100,
+    proportion = 100
+  )
+
+daytime_levels <- c("morning", "afternoon", "evening", "night")
+
+combined_rides_per_time_of_day$time_of_day <- factor(combined_rides_per_time_of_day$time_of_day, levels = daytime_levels)
+```
+```{r}
+# user proportion by time of day
+
+ggplot(combined_rides_per_time_of_day, aes(x = time_of_day)) +
+  geom_col(aes(y = proportion, fill = "Casual"), position = "stack") +
+  geom_col(aes(y = member_proportion, fill = "Member"), position = "stack") +
+  labs(title = "User proportions by time of day: May 2023 to April 2024",
+       x = NULL,
+       y = "User Proportions",
+       fill = "") +
+  theme_minimal()+
+  scale_fill_manual(values = c("Member" = "#023047", "Casual" = "#ffb703"))+
+  scale_x_discrete(labels = c("Morning\n(06:00-11:59)", "Afternoon\n(12:00-17:59)", "Evening\n(18:00-23:59)", "Night\n(00:00-05:59)"))+
+  annotate(geom = "text", x = 1, y = 92, label = "28%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 2, y = 92, label = "37%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 3, y = 92, label = "38%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 4, y = 92, label = "45%", size = 4, angle = 45)
+```
+
+- The proportion of casual users is lowest in the morning, increases for afternoon and evening and then peaks after midnight  
+  
+```{r include=FALSE}
+# prep for plot
+
+combined_rides_per_time_of_day_pivotted <- combined_rides_per_time_of_day %>%
+  select(time_of_day, member_rides, casual_rides) %>%
+  pivot_longer(cols = c(member_rides, casual_rides), 
+               names_to = "membership_type", 
+               values_to = "rides")
+
+combined_rides_per_time_of_day_pivotted$membership_type <- as.factor(combined_rides_per_time_of_day_pivotted$membership_type)
+
+daytime_levels <- c("morning", "afternoon", "evening", "night")
+
+combined_rides_per_time_of_day_pivotted$time_of_day <- factor(combined_rides_per_time_of_day_pivotted$time_of_day, levels = daytime_levels)
+
+```
+```{r}
+# ride numbers at different times of the day
+
+ggplot(combined_rides_per_time_of_day_pivotted, aes(x = time_of_day, y = rides/1000, fill = membership_type))+
+  geom_col(position = "dodge", width = 0.7)+
+  scale_fill_manual(values = c("member_rides" = "#023047", "casual_rides" = "#ffb703"))+
+  labs(title = "Ride count of users by time of day: May 2023 to April 2024",
+       x = NULL,
+       y = "Number of rides (in thousands)",
+       fill = "") +
+  theme_minimal()+
+  scale_x_discrete(labels = c("Morning\n(06:00-11:59)", "Afternoon\n(12:00-17:59)", "Evening\n(18:00-23:59)", "Night\n(00:00-05:59)"))
+```
+
+- peak bike usage occurs in the afternoon between 12:00 and 17:59.  
+- though the highest proportion of casual users is after midnight it will likely be ineffective to target this for conversion of casual users to members as there a significantly less rides occurring over between the hours of 00:00 and 05:59  
+  
+### Journey length significantly impacted the odds of being a member  
+  
+```{r include=FALSE}
+# prep
+
+member_group <- cyclist_data_cleaned %>%
+  filter(member_casual == "member") %>%
+  pull(journey_time)
+
+casual_group <- cyclist_data_cleaned %>%
+  filter(member_casual == "casual") %>%
+  pull(journey_time)
+```
+```{r}
+# plot: journey time split by user type
+
+ggplot(cyclist_data_cleaned, aes(x = journey_time/60, fill = member_casual)) +
+  geom_density(alpha = 0.5, adjust = 10) +
+  labs(title = "Density Plot of Journey Time by User Type",
+       x = "Journey Time (minutes)",
+       y = "Density",
+       fill = "") +
+  theme_minimal()+
+  scale_fill_manual(values = c("member" = "#023047", "casual" = "#ffb703"))
+```
+
+- Casual users have slightly longer journey times than members
+- The total number of journeys decreases with increasing journey length
+  
+### Journey length groupings also expressed the same change in odds of being a member  
+  
+Grouping into journey times helps to convert the informmation into an actionable decision  
+```{r include=FALSE}
+# prep
+
+total_rides_per_journey_grouping <- cyclist_data_cleaned %>%
+  group_by(journey_grouping) %>%
+  summarise(total_rides = n())
+
+member_rides_per_journey_grouping <- cyclist_data_cleaned %>%
+  filter(member_casual == "member") %>%
+  group_by(journey_grouping) %>%
+  summarise(member_rides = n())
+
+casual_rides_per_journey_grouping <- cyclist_data_cleaned %>%
+  filter(member_casual == "casual") %>%
+  group_by(journey_grouping) %>%
+  summarise(casual_rides = n())
+
+combined_rides_per_journey_grouping <- total_rides_per_journey_grouping %>%
+  left_join(member_rides_per_journey_grouping, by = "journey_grouping") %>%
+  left_join(casual_rides_per_journey_grouping, by = "journey_grouping") %>%
+  mutate(
+    total_calculated = member_rides + casual_rides,
+    member_proportion = member_rides / total_rides * 100,
+    casual_proportion = casual_rides / total_rides * 100,
+    proportion = 100
+  )
+```
+```{r}
+# member vs casual journey times grouped
+
+ggplot(combined_rides_per_journey_grouping, aes(x = journey_grouping)) +
+  geom_col(aes(y = proportion, fill = "Casual"), position = "stack") +
+  geom_col(aes(y = member_proportion, fill = "Member"), position = "stack") +
+  labs(title = "User proportions by journey length: May 2023 to April 2024",
+       x = "Journey length (minutes)",
+       y = "User Proportions",
+       fill = "") +
+  theme_minimal()+
+  scale_fill_manual(values = c("Member" = "#023047", "Casual" = "#ffb703"))+
+  annotate(geom = "text", x = 1, y = 92, label = "29%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 2, y = 92, label = "37%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 3, y = 92, label = "44%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 4, y = 92, label = "50%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 5, y = 92, label = "70%", size = 4, angle = 45)
+```
+
+- Casual members account for higher portions of rides as journey length increases  
+  
+```{r include=FALSE}
+# prep
+
+combined_rides_per_journey_grouping_pivotted <- combined_rides_per_journey_grouping %>%
+  select(journey_grouping, member_rides, casual_rides) %>%
+  pivot_longer(cols = c(member_rides, casual_rides), 
+               names_to = "membership_type", 
+               values_to = "rides")
+
+combined_rides_per_journey_grouping_pivotted$membership_type <- as.factor(combined_rides_per_journey_grouping_pivotted$membership_type)
+```
+```{r}
+# plot: ride counts per journey length grouping
+ggplot(combined_rides_per_journey_grouping_pivotted, aes(x = journey_grouping, y = rides/1000, fill = membership_type))+
+  geom_col(position = "dodge", width = 0.7)+
+  scale_fill_manual(values = c("member_rides" = "#023047", "casual_rides" = "#ffb703"))+
+  labs(title = "Ride count of users by journey length: May 2023 to April 2024",
+       x = "Journey length (minutes)",
+       y = "Number of rides (in thousands)",
+       fill = "") +
+  theme_minimal()
+```
+
+- This clearly shows that a large portion of the current usage is short journeys by members  
+- Casual riders become a higher proportion of rides as journey become longer
+- The total number of journeys decreases with increasing journey length
+- Targeting higher journey times may bring in casual riders to memberships however, those journey types are far less frequent
+
+### Bike type preference differed significantly between casual and member users  
+  
+```{r include=FALSE}
+# prep
+
+total_rides_per_bike_type <- cyclist_data_cleaned %>%
+  group_by(rideable_type) %>%
+  summarise(total_rides = n())
+
+member_rides_per_bike_type  <- cyclist_data_cleaned %>%
+  filter(member_casual == "member") %>%
+  group_by(rideable_type) %>%
+  summarise(member_rides = n())
+
+casual_rides_per_bike_type  <- cyclist_data_cleaned %>%
+  filter(member_casual == "casual") %>%
+  group_by(rideable_type) %>%
+  summarise(casual_rides = n())
+
+combined_rides_per_bike_type <- total_rides_per_bike_type %>%
+  left_join(member_rides_per_bike_type, by = "rideable_type") %>%
+  left_join(casual_rides_per_bike_type, by = "rideable_type") %>%
+  mutate(
+    total_calculated = member_rides + casual_rides,
+    member_proportion = member_rides / total_rides * 100,
+    casual_proportion = casual_rides / total_rides * 100,
+    proportion = 100
+  )
+
+# docked bikes not used by members? no description to interpret the bike type, removing from this particular analysis
+combined_rides_per_bike_type <- combined_rides_per_bike_type %>%
+  filter(rideable_type != "docked_bike")
+```
+```{r}
+# plot: user proportions for bike types
+
+ggplot(combined_rides_per_bike_type, aes(x = rideable_type)) +
+  geom_col(aes(y = proportion, fill = "Casual"), position = "stack") +
+  geom_col(aes(y = member_proportion, fill = "Member"), position = "stack") +
+  labs(title = "User proportions by bike type: May 2023 to April 2024",
+       x = "Bike type",
+       y = "User Proportions",
+       fill = "") +
+  theme_minimal()+
+  scale_fill_manual(values = c("Member" = "#023047", "Casual" = "#ffb703"))+
+  scale_x_discrete(labels = c("Classic", "Electric"))+
+  annotate(geom = "text", x = 1, y = 92, label = "32%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 2, y = 92, label = "37%", size = 4, angle = 45)
+```
+
+- casual users have a slight preference for electric bikes  
+  
+### School holidays did not significantly impacted odds of being a member  
+  
+```{r include=FALSE}
+# prep for plot
+
+total_rides_per_holidays <- cyclist_data_cleaned %>%
+  group_by(holidays) %>%
+  summarise(total_rides = n())
+
+memebr_rides_per_holidays <- cyclist_data_cleaned %>%
+  filter(member_casual == "member") %>%
+  group_by(holidays) %>%
+  summarise(member_rides = n())
+
+casual_rides_per_holidays <- cyclist_data_cleaned %>%
+  filter(member_casual == "casual") %>%
+  group_by(holidays) %>%
+  summarise(casual_rides = n())
+
+combined_rides_holidays <- total_rides_per_holidays %>%
+  left_join(memebr_rides_per_holidays, by = "holidays") %>%
+  left_join(casual_rides_per_holidays, by = "holidays") %>%
+  mutate(member_proportion = member_rides / total_rides * 100,
+    casual_proportion = casual_rides / total_rides * 100,
+    proportion = 100
+  )
+```
+```{r}
+# plot: user proportion by holidays vs term time
+
+ggplot(combined_rides_holidays, aes(x = holidays)) +
+  geom_col(aes(y = proportion, fill = "Casual"), position = "stack") +
+  geom_col(aes(y = member_proportion, fill = "Member"), position = "stack") +
+  labs(title = "User proportions during school/holiday time: May 2023 to April 2024",
+       x = NULL,
+       y = "User Proportions (%)",
+       fill = "") +
+  theme_minimal()+
+  scale_fill_manual(values = c("Member" = "#023047", "Casual" = "#ffb703"))+
+  scale_x_discrete(labels = c("School Holidays", "Term Time"))+
+  scale_y_continuous(breaks = seq(0, 100, by = 20))+
+  annotate(geom = "text", x = 1, y = 92, label = "34.9%%", size = 4, angle = 45)+
+  annotate(geom = "text", x = 2, y = 92, label = "35.3%%", size = 4, angle = 45)
+```
+
+- Users proportion remain consistent between term and holiday periods 
+  
+```{r include=FALSE}
+# prep for plot
+
+combined_rides_holidays$days <- c(41, 325)
+
+combined_rides_holidays <- combined_rides_holidays %>%
+  mutate(rides_per_day = total_rides / days) %>%
+  mutate(casual_rides_per_day = casual_rides / days) %>%
+  mutate(member_rides_per_day = member_rides / days)
+
+combined_rides_holidays_pivotted <- combined_rides_holidays %>%
+  select(holidays, member_rides_per_day, casual_rides_per_day) %>%
+  pivot_longer(cols = c(member_rides_per_day, casual_rides_per_day), 
+               names_to = "membership_type", 
+               values_to = "rides")
+
+combined_rides_holidays_pivotted$membership_type <- as.factor(combined_rides_holidays_pivotted$membership_type)
+
+```
+```{r}
+# plot: rides per day in holiday and term time
+
+ggplot(combined_rides_holidays_pivotted, aes(x = holidays, y = rides, fill = membership_type))+
+  geom_col(position = "dodge", width = 0.7)+
+  scale_fill_manual(values = c("member_rides_per_day" = "#023047", "casual_rides_per_day" = "#ffb703"),
+                    labels = c("Casual", "Member"))+
+  labs(title = "Daily ride count of users by term time: May 2023 to April 2024",
+       x = NULL,
+       y = "Number of rides per day",
+       fill = "") +
+  theme_minimal()+
+  scale_x_discrete(labels = c("School Holidays", "Term Time"))
+```
+
+- Use of bikes is higher during term time for both casual users and members
+  
+## Assessing the lat/lng location data  
+  
+### Comparing starting locations between member and casual users  
+  
+![starting locations heat map](`r here("other", "journey_start_heatmap.png")`)
+
+- Regarding points of interest, it appears there are more casual rides starting at the Chicago Midway International Airport  
+  
+### Comparing ending locations between member and casual users  
+  
+![Ending locations heat map](`r here("other", "journey_end_heatmap.png")`)  
+
+- Similar to journey starting points, there are more casual rides ending at the Chicago Midway International Airport  
+  
+# Discussion   
+  
+## Process Summary  
+  
+- A large percentage (~99%) of the data was retained after cleaning, so findings can be considered reliable and representative of the user base  
+  
+- The available data and collection of other data sources such as holiday dates and monthly temperatures allowed for the calculation of numerous metrics, many of which were influential factors in the likelihood of a person being a member/casual user  
+  
+- Data was modeled to identify significant findings and visuals with brief comments were provided to describe those findings  
+  
+## Finding Summary  
+  
+Aspects which impacted the likelihood of being a casual user (the target group) were:  
+  
+- **Month of the year:** Summer months and higher temperature led to a higher proportion of casual use  
+  
+- **Day of the week:** Weekends showed a higher proportion of casual use  
+  
+- **Time of day:** Morning had the lowest proportion of casual use while proportion of casual use was highest between 00:00 and 05:59  
+  
+- **Journey length:** Casual users were more likely to have longer journey times  
+  
+- **Bike type:** Casual users has a slight preference for electric bikes  
+  
+- **Journey locations:** It appears that casual journeys to and from the airport are more common in comparison to member routes  
+  
+## Caveats  
+  
+- Data over the previous year was missing some information provided in previous data sets such as age and gender so their influence was not assessed here  
+  
+- As no account ID was included in the data set, it means some of these journeys may be attributed to the same individual, which could impact the findings  
+  
+- This data only encompasses one year so there may be trends specific to this year that do not appear across multiple years  
+  
+- Location analysis was based solely on observations from heat maps. These maps (constructed using the 'leaflet' package) were not directly included in reports due to the intensive rendering requirements of interactive maps.  
+
+## Recommendations
+
+Though many of the metrics generated here identified scenarios which have higher casual use and could potentially be targets for conversion of casual users to members, some of these scenarios would have a much better return on investment based largely on the number of rides occurring in those scenarios. As a prime example of this, the highest proportion of casual use observed in the data set (70%) was from journeys lasting longer than 40 minutes. Though at first glance it might seem perfect to offer promotions linked with membership for journeys over 40 minutes, these journeys only reflect 3% of all journeys and would therefore not net many new customers even if effective. With that in mind, the following are likely to be the best targets for conversion to memberships:  
+  
+1. Promotions targeting summer months, specifically May through to September will target time periods with roughly 40% casual use in combination with these months having the highest user numbers of the whole year.
+  
+2. With a very strong relationship between proportion of casual users and temperature, where more casual users use the service in higher temperatures, a short term promotion could be preemptively prepared to go into effect when there are predictions of incoming hot weather.
+  
+3. Causal use is much higher on weekends with total rides on weekend days remaining equivalent to weekdays, so a promotion during weekends, or memberships specifically for weekends, may convert a substantial number of users to members.
+  - Further analysis for inclusion of Friday evening/night in this membership may be useful here to see if it could boost the appeal/conversion 
+  
+Other smaller scale conversions to memberships could be made by the following scenarios:  
+  
+1. Promotions for journey lengths above 20 minutes.  
+  
+2. Promotions for use of electric bikes.
+  
+3. Promotions for journeys to and from the airport.
